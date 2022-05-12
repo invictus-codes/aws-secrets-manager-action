@@ -1,5 +1,4 @@
 import * as core from '@actions/core'
-import { Inputs } from './constants'
 
 /* Validate a possible object i.e., o = { "a": 2 } */
 export const isJSONObject = (o: Record<string, any>): boolean =>
@@ -61,16 +60,22 @@ export const getPOSIXString = (data: string): string => {
   return data.replace(/[^a-zA-Z0-9_]/g, '_').toUpperCase()
 }
 
-export const injectSecretValueMapToEnvironment = (secretValueMap: Record<string, any>): void => {
-  const disableWarnings = core.getBooleanInput(Inputs.DISABLE_WARNINGS)
-
+export const injectSecretValueMapToEnvironment = (
+  secretValueMap: Record<string, any>,
+  shouldSuppressPOSIXWarning: boolean,
+  shouldAddToStepsENV: boolean,
+  shouldAddToStepOutput: boolean,
+  maskSecrets: boolean
+): void => {
   for (const secretName in secretValueMap) {
     const secretValue: string = secretValueMap[secretName]
-    core.setSecret(secretValue)
+    if (maskSecrets) {
+      core.setSecret(secretValue)
+    }
     // If secretName contains non-posix characters, it can't be read by the shell
     // Get POSIX compliant name secondary env name that can be read by the shell
     const secretNamePOSIX = getPOSIXString(secretName)
-    if (secretName !== secretNamePOSIX && !disableWarnings) {
+    if (secretName !== secretNamePOSIX && !shouldSuppressPOSIXWarning) {
       core.warning('One of the secrets has a name that is not POSIX compliant and hence cannot directly \
 be used/injected as an environment variable name. Therefore, it will be transformed into a POSIX compliant \
 environment variable name. Enable GitHub Actions Debug Logging \
@@ -79,7 +84,14 @@ see the transformed environment variable name.\nPOSIX compliance: environment va
 upper case letters, digits and underscores. It cannot begin with a digit.')
       core.debug(`Secret name '${secretName}' is not POSIX compliant. It will be transformed to '${secretNamePOSIX}'.`)
     }
-    core.debug(`Injecting environment variable '${secretNamePOSIX}'.`)
-    core.exportVariable(secretNamePOSIX, secretValue)
+    if (shouldAddToStepsENV) {
+      core.debug(`Injecting environment variable '${secretNamePOSIX}'.`)
+      core.exportVariable(secretNamePOSIX, secretValue)
+    }
+
+    if (shouldAddToStepOutput) {
+      core.debug(`Adding variable '${secretNamePOSIX}' to the step output.`)
+      core.setOutput(secretNamePOSIX, secretValue)
+    }
   }
 }
